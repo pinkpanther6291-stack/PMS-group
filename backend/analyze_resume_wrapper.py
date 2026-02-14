@@ -84,64 +84,90 @@ def suggest_roles(skills_found):
 
 def extract_experience_entries(resume_text):
     """
-    Extract experience-related entries from resume text.
-    Looks for patterns like job titles, companies, dates, and descriptions.
+    Overhauled experience extraction:
+    Isolates the experience block first, then parses entries.
+    Handles sidebar interleaving by being smarter about section boundaries.
     """
     import re
-
+    
     text = resume_text
     experiences = []
-
-    # Split into lines
-    lines = text.split('\n')
-
-    # Look for experience-like patterns
-    exp_section_found = False
-    current_entry = None
-
-    # Common date patterns
-    date_pattern = r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]*\d{2,4}\s*[-–—to]+\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Present|Current|Now)[a-z]*[\s,]*\d{0,4}'
-    year_range_pattern = r'\b20\d{2}\s*[-–—to]+\s*(?:20\d{2}|Present|Current|Now)\b'
-
+    
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    exp_start = -1
+    
+    # 1. Identify start of Experience section
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
+        if re.search(r'\b(?:experience|work history|employment|professional background|career history)\w*\b', line, re.IGNORECASE):
+            # Header check: Should be relatively short
+            if len(line.split()) < 5:
+                exp_start = i + 1
+                break
+                
+    if exp_start == -1:
+        return []
 
-        # Check if we're in the experience section
-        if re.search(r'\b(?:experience|work history|employment|professional background|career history)\b', stripped, re.IGNORECASE):
-            exp_section_found = True
-            continue
+    # 2. Extract until next major section header
+    exp_lines = []
+    stop_headers = r'\b(?:education|skills|projects|certifications|awards|references|summary|contact|hobbies|languages|technical)\b'
+    
+    for line in lines[exp_start:]:
+        # If we see a very likely header for the next section, stop
+        if len(line) < 40 and re.search(stop_headers, line, re.IGNORECASE):
+            # Ensure it's not just a word in a sentence
+            if line.isupper() or len(line.split()) < 4:
+                break
+        exp_lines.append(line)
 
-        # Check if we've moved past experience section
-        if exp_section_found and re.search(r'\b(?:education|skills|projects|certifications|awards|references)\b', stripped, re.IGNORECASE):
-            exp_section_found = False
+    # 3. Parse the collected lines into entries
+    current_entry = None
+    bullet_chars = ('•', '-', '●', '▪', '*', '➢', '✓')
+    
+    # Keywords that often indicate a job title
+    title_keywords = [
+        "analyst", "intern", "developer", "engineer", "manager", "lead", 
+        "internship", "consultant", "specialist", "coordinator", "officer", "associate", "trainee"
+    ]
+    
+    date_pattern = r'(?:\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,./]*\d{2,4})|(?:\d{2,4}[\s,./-]+\d{0,4})|(?:Present|Current|Now)'
+
+    for line in exp_lines:
+        is_bullet = line.startswith(bullet_chars)
+        # Check if line contains a date pattern
+        has_date = re.search(date_pattern, line, re.IGNORECASE)
+        # Check if line contains title keywords
+        has_title_kw = any(kw in line.lower() for kw in title_keywords)
+        
+        # A new entry usually starts with a title keyword or a line that looks like Title | Date
+        # But if it's just a date line and we already have a title, don't start a new entry
+        is_likely_new_entry = not is_bullet and (has_title_kw or (has_date and not current_entry))
+
+        if is_likely_new_entry:
             if current_entry:
                 experiences.append(current_entry)
-                current_entry = None
-            continue
-
-        if exp_section_found:
-            has_date = re.search(date_pattern, stripped, re.IGNORECASE) or re.search(year_range_pattern, stripped, re.IGNORECASE)
-
-            if has_date and len(stripped) > 10:
-                if current_entry:
-                    experiences.append(current_entry)
-                current_entry = {
-                    "title": stripped,
-                    "details": []
-                }
-            elif current_entry:
-                current_entry["details"].append(stripped)
-            elif stripped and len(stripped) > 5:
-                # Possible start of an entry without date
-                if current_entry:
-                    current_entry["details"].append(stripped)
+            current_entry = {
+                "title": line,
+                "details": []
+            }
+        elif current_entry:
+            clean = line
+            for char in bullet_chars:
+                if clean.startswith(char):
+                    clean = clean[len(char):].strip()
+                    break
+            
+            if clean:
+                if is_bullet:
+                    current_entry["details"].append(clean)
                 else:
-                    current_entry = {
-                        "title": stripped,
-                        "details": []
-                    }
+                    # If we don't have details yet, it's likely company/date info, keep it in title area
+                    if not current_entry["details"]:
+                        if "|" not in current_entry["title"]:
+                            current_entry["title"] += " | " + clean
+                        else:
+                            current_entry["details"].append(clean)
+                    else:
+                        current_entry["details"][-1] += " " + clean
 
     if current_entry:
         experiences.append(current_entry)
@@ -151,52 +177,80 @@ def extract_experience_entries(resume_text):
 
 def extract_projects(resume_text):
     """
-    Extract project entries from resume text.
+    Extremely strict project extraction:
+    Only considers lines with '|' as new project titles.
+    Everything else is a bullet or detail.
     """
     import re
 
     text = resume_text
     projects = []
 
-    lines = text.split('\n')
-    proj_section_found = False
-    current_project = None
-
+    # Split into lines
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    proj_section_start = -1
+    
+    # 1. Find the Projects section
     for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
+        if re.search(r'\b(?:projects|personal projects|academic projects|key projects|portfolio)\b', line, re.IGNORECASE):
+            proj_section_start = i + 1
+            break
+            
+    if proj_section_start == -1:
+        return []
 
-        # Check if we're in the projects section
-        if re.search(r'\b(?:projects|personal projects|academic projects|key projects|portfolio)\b', stripped, re.IGNORECASE):
-            proj_section_found = True
-            continue
+    # 2. Extract lines until the next major section
+    proj_lines = []
+    # Major section headers to stop at
+    stop_headers = r'\b(?:experience|work history|employment|education|skills|certifications|awards|references|summary|contact|hobbies|languages|technical)\w*\b'
+    
+    for line in lines[proj_section_start:]:
+        # If we hit another major section, stop
+        if len(line) < 40 and re.search(stop_headers, line, re.IGNORECASE):
+            # Only stop if it's likely a header (short, capitalized or all caps)
+            if line.isupper() or len(line.split()) < 4:
+                break
+        proj_lines.append(line)
 
-        # Check if we've moved past projects section
-        if proj_section_found and re.search(r'\b(?:education|skills|experience|certifications|awards|references|work)\b', stripped, re.IGNORECASE):
-            proj_section_found = False
+    bullet_chars = ('•', '-', '●', '▪', '*', '➢', '✓')
+    current_project = None
+    
+    # Words that should NEVER be project titles
+    forbidden_titles = ["technical", "skills", "core", "certifications", "education", "summary", "awards"]
+
+    for line in proj_lines:
+        lower_line = line.lower()
+        is_bullet = line.startswith(bullet_chars)
+        
+        # PRECISE TITLE DETECTION:
+        # In this professional format, titles MUST have a pipe '|'
+        # Also ensure we aren't picking up a stray header
+        is_forbidden = any(word in lower_line for word in forbidden_titles) and len(line.split()) < 4
+        is_new_title = '|' in line and not is_bullet and not is_forbidden
+
+        if is_new_title:
             if current_project:
                 projects.append(current_project)
-                current_project = None
-            continue
-
-        if proj_section_found:
-            # A new project usually starts with a title-like line (no bullet, short, possibly bold)
-            if stripped.startswith(('•', '-', '●', '▪', '*')) or (len(stripped) > 5 and not stripped[0].isspace()):
-                clean = stripped.lstrip('•-●▪* ').strip()
-                if len(clean) > 3:
-                    if current_project and (len(current_project.get("details", [])) > 0 or stripped.startswith(('•', '-', '●', '▪', '*'))):
-                        # This is a detail bullet
-                        current_project["details"].append(clean)
-                    else:
-                        if current_project:
-                            projects.append(current_project)
-                        current_project = {
-                            "name": clean,
-                            "details": []
-                        }
-            elif current_project:
-                current_project["details"].append(stripped)
+            current_project = {
+                "name": line,
+                "details": []
+            }
+        elif current_project:
+            # Clean bullet char
+            detail = line
+            for char in bullet_chars:
+                if detail.startswith(char):
+                    detail = detail[len(char):].strip()
+                    break
+            
+            if detail:
+                # If it's a new line without a pipe and we aren't starting a bullet,
+                # it's almost certainly a sub-line or detail.
+                if not is_bullet and current_project["details"]:
+                    # Append as continuation of last bullet if it looks like one
+                    current_project["details"][-1] += " " + detail
+                else:
+                    current_project["details"].append(detail)
 
     if current_project:
         projects.append(current_project)
@@ -231,7 +285,7 @@ def main():
         skills_found = extract_skills(resume_text)
 
         # Calculate ATS score
-        ats_score, enhanced_strengths, resume_weaknesses = calculate_ats_score(
+        ats_score, enhanced_strengths, resume_weaknesses, score_breakdown = calculate_ats_score(
             resume_text, skills_found
         )
 
@@ -262,6 +316,7 @@ def main():
         result = {
             "success": True,
             "ats_score": ats_score,
+            "score_breakdown": score_breakdown,
             "skills_found": skills_found,
             "total_skills_found": total_skills,
             "sections_detected": sections,

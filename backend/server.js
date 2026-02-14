@@ -118,7 +118,20 @@ const baseFields = {
 const studentFields = {
   ...baseFields,
   cgpa: { type: Number, min: 0, max: 10, default: null },
-  // ATS-related fields removed from student schema
+  // ATS Analysis Results storage
+  atsAnalysis: {
+    score: { type: Number, default: 0 },
+    breakdown: { type: Object, default: {} },
+    skillsFound: { type: Object, default: {} },
+    skillGaps: { type: Object, default: {} },
+    experience: { type: Array, default: [] },
+    projects: { type: Array, default: [] },
+    suggestedRoles: { type: Array, default: [] },
+    strengths: { type: Object, default: {} },
+    weaknesses: { type: Array, default: [] },
+    optimizationAdvice: { type: Array, default: [] },
+    lastAnalyzed: { type: Date, default: Date.now }
+  }
 };
 const studentSchema = new mongoose.Schema(studentFields, { timestamps: true });
 const facultySchema = new mongoose.Schema(baseFields, { timestamps: true });
@@ -235,9 +248,15 @@ function isEmailStrict(email) {
 function runPythonAnalyzer(filePath) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, 'analyze_resume_wrapper.py');
-    console.log(`[PythonAnalyzer] Running: python "${scriptPath}" "${filePath}"`);
 
-    const proc = spawn('python', [scriptPath, filePath], {
+    // Auto-detect Python path: prefer .venv/Scripts/python.exe if it exists
+    const venvPythonPath = path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe');
+    const pythonExe = fs.existsSync(venvPythonPath) ? venvPythonPath : 'python';
+
+    console.log(`[PythonAnalyzer] Using Python: ${pythonExe}`);
+    console.log(`[PythonAnalyzer] Running: "${pythonExe}" "${scriptPath}" "${filePath}"`);
+
+    const proc = spawn(pythonExe, [scriptPath, filePath], {
       cwd: __dirname,
       env: { ...process.env },
       timeout: 60000, // 60 second timeout
@@ -329,10 +348,57 @@ app.post('/api/analyze-resume', async (req, res) => {
 
     console.log(`[AnalyzeResume] Analysis complete. ATS Score: ${result.ats_score}/100`);
 
+    // Save results to student database
+    try {
+      await Student.findOneAndUpdate(
+        { email },
+        {
+          $set: {
+            atsAnalysis: {
+              score: result.ats_score,
+              breakdown: result.score_breakdown || {},
+              skillsFound: result.skills_found || {},
+              skillGaps: result.skill_gaps || {},
+              experience: result.experience || [],
+              projects: result.projects || [],
+              suggestedRoles: result.suggested_roles || [],
+              strengths: result.enhanced_strengths || {},
+              weaknesses: result.resume_weaknesses || [],
+              optimizationAdvice: result.ats_optimization_advice || [],
+              lastAnalyzed: new Date()
+            }
+          }
+        },
+        { new: true }
+      );
+      console.log(`[AnalyzeResume] Successfully saved analysis results for ${email}`);
+    } catch (dbErr) {
+      console.error(`[AnalyzeResume] Database save failed for ${email}:`, dbErr.message);
+      // We don't return error here because analysis was successful, just saving to DB failed
+    }
+
     return res.json(result);
   } catch (err) {
     console.error('[AnalyzeResume] Error:', err.message);
     return res.status(500).json({ message: 'Resume analysis failed', error: err.message });
+  }
+});
+
+// Get stored analysis results for a student
+app.get('/api/students/analysis', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const student = await Student.findOne({ email }, 'atsAnalysis').lean();
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    return res.json({
+      success: true,
+      analysis: student.atsAnalysis || null
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Error fetching analysis', error: err.message });
   }
 });
 

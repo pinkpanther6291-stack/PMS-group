@@ -121,6 +121,7 @@ function ScoreCircle({ score }: { score: number }) {
 interface AnalysisResult {
   success: boolean;
   ats_score: number;
+  score_breakdown?: Record<string, number>;
   skills_found: Record<string, string[]>;
   total_skills_found: number;
   sections_detected: Record<string, boolean>;
@@ -336,9 +337,49 @@ const ResumeSkillAnalysis = () => {
     }
   };
 
+  const fetchStoredAnalysis = async () => {
+    const stored = auth.getUser();
+    const email = stored?.user?.email;
+    if (!email) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/students/analysis?email=${encodeURIComponent(email)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.success && data.analysis) {
+        const a = data.analysis;
+        // Map stored data to frontend interface
+        setAnalysisResult({
+          success: true,
+          ats_score: Number(a.score) || 0,
+          score_breakdown: (a.breakdown as Record<string, number>) || {},
+          skills_found: (a.skillsFound as Record<string, string[]>) || {},
+          total_skills_found: Object.values((a.skillsFound as Record<string, string[]>) || {}).reduce((acc: number, curr: any) => acc + (curr?.length || 0), 0),
+          sections_detected: {}, // We don't store this but its optional
+          skill_gaps: a.skillGaps || {},
+          enhanced_strengths: a.strengths || {},
+          resume_weaknesses: a.weaknesses || [],
+          ats_optimization_advice: a.optimizationAdvice || [],
+          suggested_roles: a.suggestedRoles || [],
+          experience: a.experience || [],
+          projects: a.projects || [],
+          word_count: 0, // Placeholder
+          metadata: { lastAnalyzed: a.lastAnalyzed }
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch stored analysis:', err);
+    }
+  };
+
   useEffect(() => {
     fetchExistingResume();
-    const onUpdate = () => fetchExistingResume();
+    fetchStoredAnalysis();
+    const onUpdate = () => {
+      fetchExistingResume();
+      fetchStoredAnalysis();
+    };
     window.addEventListener('storage', onUpdate);
     window.addEventListener('pms_resume_updated', onUpdate);
     return () => {
@@ -538,10 +579,10 @@ const ResumeSkillAnalysis = () => {
                         <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Resume ATS Analysis</h2>
                         <div className="mt-2 text-left">
                           <span className={`px-4 py-1.5 rounded-full text-base font-semibold tracking-wide border-0 shadow-sm ${analysisResult.ats_score >= 85 ? 'bg-emerald-100 text-emerald-600' :
-                              analysisResult.ats_score >= 70 ? 'bg-blue-100 text-blue-600' :
-                                analysisResult.ats_score >= 55 ? 'bg-amber-100 text-amber-600' :
-                                  analysisResult.ats_score >= 40 ? 'bg-orange-100 text-orange-600' :
-                                    'bg-red-100 text-red-600'
+                            analysisResult.ats_score >= 70 ? 'bg-blue-100 text-blue-600' :
+                              analysisResult.ats_score >= 55 ? 'bg-amber-100 text-amber-600' :
+                                analysisResult.ats_score >= 40 ? 'bg-orange-100 text-orange-600' :
+                                  'bg-red-100 text-red-600'
                             }`}>
                             {analysisResult.ats_score >= 85 ? 'Excellent' :
                               analysisResult.ats_score >= 70 ? 'Strong' :
@@ -577,6 +618,53 @@ const ResumeSkillAnalysis = () => {
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Score Breakdown Section */}
+                <Card className="border-none shadow-sm bg-white rounded-2xl mt-6 overflow-hidden">
+                  <CardContent className="p-8">
+                    <div className="flex items-center gap-3 mb-8">
+                      <TrendingUp className="w-6 h-6 text-emerald-500" />
+                      <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Score Breakdown</h2>
+                    </div>
+
+                    <div className="space-y-6">
+                      {[
+                        { label: 'Formatting', key: 'formatting', max: 20, target: 20 },
+                        { label: 'Keywords', key: 'keywords', max: 20, target: 20 },
+                        { label: 'Experience Relevance', key: 'experience', max: 20, target: 20 },
+                        { label: 'Skills Match', key: 'skills', max: 20, target: 20 },
+                        { label: 'Education', key: 'education', max: 20, target: 20 },
+                      ].map((item) => {
+                        const rawScore = analysisResult.score_breakdown?.[item.key] || 0;
+                        const normalizedScore = Math.round((rawScore / item.max) * item.target);
+                        const percentage = (rawScore / item.max) * 100;
+
+                        // Determine color based on normalized score (0-20)
+                        const isGood = normalizedScore >= 15;
+                        const isWarning = normalizedScore >= 8 && normalizedScore < 15;
+
+                        return (
+                          <div key={item.label} className="space-y-3">
+                            <div className="flex justify-between items-center">
+                              <span className="text-base font-medium text-slate-700">{item.label}</span>
+                              <span className={`text-sm font-bold ${isGood ? 'text-emerald-600' : isWarning ? 'text-amber-500' : 'text-red-500'
+                                }`}>
+                                {normalizedScore}/{item.target}
+                              </span>
+                            </div>
+                            <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-1000 ${isGood ? 'bg-emerald-500' : isWarning ? 'bg-amber-500' : 'bg-red-500'
+                                  }`}
+                                style={{ width: `${Math.min(percentage, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>

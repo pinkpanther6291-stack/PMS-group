@@ -62,10 +62,10 @@ except LookupError:
 
 SKILL_DB = {
     "Programming": [
-        "python", "java", "c++", "c", "sql", "javascript", "typescript", 
+        "python", "java", "c++", "c", "sql", "typescript", 
         "go", "rust", "kotlin", "swift", "scala", "r", "php", "ruby", 
         "c#", "perl", "bash", "shell", "matlab", "dart", "haskell",
-        "lua", "groovy", "elixir", "f#", "objective-c"
+        "lua", "groovy", "elixir", "f#", "objective-c", "oops", "data structures"
     ],
     "Web": [
         "html", "css", "javascript", "react", "node", "nodejs", "angular", 
@@ -221,17 +221,7 @@ SKILL_DETAILS = {
 
 def extract_resume_text(file_path: str) -> str:
     """
-    Extract text from PDF resume.
-    
-    Args:
-        file_path: Path to the PDF file
-        
-    Returns:
-        Extracted text from the resume
-        
-    Raises:
-        FileNotFoundError: If the file doesn't exist
-        Exception: For any other errors during extraction
+    Extract text from PDF resume with better layout preservation.
     """
     if not Path(file_path).exists():
         raise FileNotFoundError(f"Resume file not found: {file_path}")
@@ -240,12 +230,33 @@ def extract_resume_text(file_path: str) -> str:
     try:
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
+                # Use a more robust extraction method that handles columns better
+                # We sort characters by top, then left to maintain reading order
+                words = page.extract_words(x_tolerance=3, y_tolerance=3)
+                if words:
+                    # Group words by line (same top or very close top)
+                    lines_dict = {}
+                    for w in words:
+                        top = round(float(w['top']))
+                        if top not in lines_dict:
+                            lines_dict[top] = []
+                        lines_dict[top].append(w)
+                    
+                    # Sort lines by top
+                    sorted_tops = sorted(lines_dict.keys())
+                    for top in sorted_tops:
+                        # Sort words in line by left position
+                        line_words = sorted(lines_dict[top], key=lambda x: float(x['x0']))
+                        line_text = " ".join(w['text'] for w in line_words)
+                        text += line_text + "\n"
+                else:
+                    # Fallback to standard extraction
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
         
         if not text.strip():
-            raise ValueError("No text could be extracted from the PDF. The file might be empty or corrupted.")
+            raise ValueError("No text could be extracted from the PDF.")
         
         return text
     except Exception as e:
@@ -336,18 +347,11 @@ def detect_sections(resume_text: str) -> Dict[str, bool]:
     return sections
 
 
-def calculate_ats_score(resume_text: str, skills_found: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any], List[Dict[str, str]]]:
+def calculate_ats_score(resume_text: str, skills_found: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any], List[Dict[str, str]], Dict[str, int]]:
     """
-    Calculate comprehensive ATS score with detailed strengths and weaknesses.
-    
-    Args:
-        resume_text: The resume text content
-        skills_found: Dictionary of categorized skills found
-        
-    Returns:
-        Tuple of (score, enhanced_strengths, weaknesses)
+    Calculate comprehensive ATS score. 
+    Each of the 5 categories is worth 20 points, totaling 100.
     """
-    score = 0
     temp_strengths_list = []
     resume_weaknesses = []
     
@@ -355,251 +359,98 @@ def calculate_ats_score(resume_text: str, skills_found: Dict[str, List[str]]) ->
     words = text.split()
     word_count = len(words)
     
-    # ========================================================================
-    # SECTION ANALYSIS (30 points total - 6 points per section)
-    # ========================================================================
+    # 1. FORMATTING (20 points: 15 for sections + 5 for length)
     sections = detect_sections(resume_text)
-    section_count = sum(sections.values())
-    
+    section_points = sum(3 for present in sections.values() if present) # 5 sections * 3 = 15
     for section, present in sections.items():
         if present:
-            score += 6
-            temp_strengths_list.append({
-                "strength": f"{section.capitalize()} section present",
-                "tip": f"Your {section} section is well-structured and clearly identifiable, which helps ATS systems parse your resume correctly."
-            })
+            temp_strengths_list.append({"strength": f"{section.capitalize()} section present", "tip": f"Your {section} section is well-structured."})
         else:
-            resume_weaknesses.append({
-                "weakness": f"{section.capitalize()} section missing",
-                "impact": f"Missing {section} section reduces ATS compatibility and may cause your resume to be filtered out early.",
-                "fix": f"Add a clearly labeled '{section.capitalize()}' section with relevant information to improve structure and ATS score."
-            })
+            resume_weaknesses.append({"weakness": f"{section.capitalize()} section missing", "impact": "Reduces ATS compatibility.", "fix": f"Add a '{section.capitalize()}' section."})
+            
+    len_points = 0
+    if 400 <= word_count <= 700: len_points = 5
+    elif 300 <= word_count <= 900: len_points = 4
     
-    # ========================================================================
-    # SKILLS ANALYSIS (25 points total)
-    # ========================================================================
+    formatting_score = section_points + len_points # Max 20
+
+    # 2. SKILLS MATCH (20 points)
     total_skills = sum(len(v) for v in skills_found.values())
+    skills_score = 0
+    if total_skills >= 20: skills_score = 20
+    elif total_skills >= 15: skills_score = 18
+    elif total_skills >= 10: skills_score = 15
+    elif total_skills >= 6: skills_score = 10
+    else: skills_score = 5
     
-    if total_skills >= 20:
-        score += 25
-        temp_strengths_list.append({
-            "strength": "Outstanding technical skill coverage",
-            "tip": f"Excellent! You've listed {total_skills} technical skills, demonstrating comprehensive expertise across multiple domains."
-        })
-    elif total_skills >= 15:
-        score += 22
-        temp_strengths_list.append({
-            "strength": "Excellent technical skill coverage",
-            "tip": f"Great! You have {total_skills} skills listed, showing strong technical breadth."
-        })
-    elif total_skills >= 10:
-        score += 18
-        temp_strengths_list.append({
-            "strength": "Strong technical skills",
-            "tip": f"You have {total_skills} skills listed, which is competitive for most roles."
-        })
-    elif total_skills >= 6:
-        score += 12
-        temp_strengths_list.append({
-            "strength": "Moderate technical skills",
-            "tip": f"You have {total_skills} skills. Consider expanding your skill set to be more competitive."
-        })
-    else:
-        score += 5
-        resume_weaknesses.append({
-            "weakness": "Limited technical skills listed",
-            "impact": f"Only {total_skills} skills detected. Low skill count significantly reduces ATS matching and may filter out your resume.",
-            "fix": f"Add more relevant technical skills to your resume. Target 15-25 skills across different categories for optimal ATS performance."
-        })
+    if skills_score >= 15:
+        temp_strengths_list.append({"strength": "Strong technical skills", "tip": f"You have {total_skills} skills listed."})
     
-    # ========================================================================
-    # EXPERIENCE KEYWORDS (15 points total)
-    # ========================================================================
-    exp_keywords = [
-        "intern", "internship", "worked", "developed", "implemented", "built", 
-        "created", "designed", "managed", "led", "achieved", "improved",
-        "delivered", "launched", "optimized", "automated", "reduced",
-        "increased", "established", "coordinated", "collaborated"
-    ]
+    # 3. EXPERIENCE RELEVANCE (20 points)
+    exp_keywords = ["intern", "internship", "worked", "developed", "implemented", "built", "created", "designed", "managed", "led", "achieved", "improved", "delivered", "launched", "optimized", "automated", "reduced", "increased", "established", "coordinated", "collaborated"]
     exp_hits = sum(1 for k in exp_keywords if re.search(r'\b' + k + r'\b', text))
+    experience_score = 0
+    if exp_hits >= 8: experience_score = 20
+    elif exp_hits >= 5: experience_score = 16
+    elif exp_hits >= 3: experience_score = 12
+    elif exp_hits >= 1: experience_score = 8
     
-    if exp_hits >= 8:
-        score += 15
-        temp_strengths_list.append({
-            "strength": "Excellent experience indicators",
-            "tip": f"Outstanding! Your resume uses {exp_hits} action verbs, clearly demonstrating impactful contributions and achievements."
-        })
-    elif exp_hits >= 5:
-        score += 12
-        temp_strengths_list.append({
-            "strength": "Strong experience indicators",
-            "tip": f"Good! You use {exp_hits} action verbs, showing meaningful work contributions."
-        })
-    elif exp_hits >= 3:
-        score += 8
-        temp_strengths_list.append({
-            "strength": "Good experience indicators",
-            "tip": f"You demonstrate experience with {exp_hits} action-oriented words. Consider adding more to strengthen impact."
-        })
-    elif exp_hits >= 1:
-        score += 4
-        resume_weaknesses.append({
-            "weakness": "Limited experience keywords",
-            "impact": f"Only {exp_hits} action verbs found. This makes your achievements less impactful and harder for ATS to identify.",
-            "fix": "Rewrite your experience descriptions using strong action verbs like 'developed', 'implemented', 'achieved', 'optimized' to show impact."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "No experience keywords found",
-            "impact": "Lack of action verbs significantly weakens your experience section and reduces ATS matching.",
-            "fix": "Completely rewrite experiences using strong action verbs. Start each bullet point with words like 'Developed', 'Implemented', 'Led', 'Achieved'."
-        })
-    
-    # ========================================================================
-    # EDUCATION CREDENTIALS (10 points total)
-    # ========================================================================
-    edu_keywords = [
-        "b.tech", "btech", "be", "b.e", "b.e.", "bca", "mca", "degree", 
-        "bachelor", "master", "diploma", "ph.d", "phd", "m.tech", "mtech",
-        "m.s", "m.s.", "ms", "b.s", "b.s.", "bs", "mba", "undergraduate",
-        "graduate", "postgraduate", "college", "university"
-    ]
-    edu_found = any(re.search(r'\b' + k + r'\b', text) for k in edu_keywords)
-    
-    if edu_found:
-        score += 10
-        temp_strengths_list.append({
-            "strength": "Education credentials clearly stated",
-            "tip": "Your educational background is well-documented and easy for ATS to identify."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "Education details unclear or missing",
-            "impact": "Missing or unclear education information is often an automatic disqualifier. ATS looks for specific degree keywords.",
-            "fix": "Clearly state your degree (e.g., 'Bachelor of Technology in Computer Science'), institution name, and graduation year in a dedicated Education section."
-        })
-    
-    # ========================================================================
-    # RESUME LENGTH OPTIMIZATION (10 points total)
-    # ========================================================================
-    if 400 <= word_count <= 700:
-        score += 10
-        temp_strengths_list.append({
-            "strength": "Perfect resume length",
-            "tip": f"Excellent! Your resume has {word_count} words, which is ideal for ATS parsing and recruiter readability."
-        })
-    elif 300 <= word_count <= 900:
-        score += 8
-        temp_strengths_list.append({
-            "strength": "Good resume length",
-            "tip": f"Your resume has {word_count} words, which is acceptable. Aim for 400-700 words for optimal impact."
-        })
-    elif word_count < 300:
-        resume_weaknesses.append({
-            "weakness": "Resume too short",
-            "impact": f"With only {word_count} words, your resume lacks sufficient detail for ATS to properly evaluate your qualifications.",
-            "fix": "Expand on your experiences, achievements, and skills. Add quantifiable metrics and specific project details to reach 400-600 words."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "Resume too long",
-            "impact": f"With {word_count} words, your resume may be overwhelming for ATS and recruiters. Verbosity can reduce match scores.",
-            "fix": "Condense your resume to 400-700 words. Focus on most recent and relevant experiences. Remove redundant information."
-        })
-    
-    # ========================================================================
-    # KEYWORD DIVERSITY (10 points total)
-    # ========================================================================
+    if experience_score >= 12:
+        temp_strengths_list.append({"strength": "Good experience indicators", "tip": f"You use {exp_hits} action verbs."})
+        
+    # 4. KEYWORDS (20 points)
     unique_words = set(words)
     unique_ratio = len(unique_words) / max(len(words), 1)
+    keywords_score = 0
+    if unique_ratio > 0.50: keywords_score = 20
+    elif unique_ratio > 0.45: keywords_score = 16
+    elif unique_ratio > 0.35: keywords_score = 12
     
-    if unique_ratio > 0.50:
-        score += 10
-        temp_strengths_list.append({
-            "strength": "Excellent keyword diversity",
-            "tip": f"Outstanding! Your resume uses {len(unique_words)} unique words ({unique_ratio:.1%} diversity), which maximizes ATS keyword matching opportunities."
-        })
-    elif unique_ratio > 0.45:
-        score += 8
-        temp_strengths_list.append({
-            "strength": "Very good keyword diversity",
-            "tip": f"Your resume has {len(unique_words)} unique words ({unique_ratio:.1%} diversity), showing strong vocabulary variety."
-        })
-    elif unique_ratio > 0.35:
-        score += 6
-        temp_strengths_list.append({
-            "strength": "Good keyword diversity",
-            "tip": f"Your keyword usage is solid with {unique_ratio:.1%} diversity. You could further improve by using more varied terminology."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "Low keyword diversity",
-            "impact": f"Only {unique_ratio:.1%} unique words. Repetitive wording limits ATS matching opportunities and reduces your chances of being selected.",
-            "fix": "Use varied terminology and synonyms. For example, use 'developed', 'built', 'created', 'engineered' instead of repeating the same verb. Expand your technical vocabulary."
-        })
-    
-    # ========================================================================
-    # CONTACT INFORMATION (Bonus points)
-    # ========================================================================
+    if keywords_score >= 12:
+        temp_strengths_list.append({"strength": "Good keyword diversity", "tip": f"Your vocabulary is varied."})
+
+    # 5. EDUCATION (20 points)
+    edu_keywords = ["b.tech", "btech", "be", "b.e", "b.e.", "bca", "mca", "degree", "bachelor", "master", "diploma", "ph.d", "phd", "m.tech", "mtech", "ms", "bs", "mba"]
+    edu_found = any(re.search(r'\b' + k + r'\b', text) for k in edu_keywords)
+    education_score = 20 if edu_found else 0
+    if edu_found:
+        temp_strengths_list.append({"strength": "Education credentials clear", "tip": "Educational background is well-documented."})
+
+    # CONTACT INFORMATION (Bonus analysis)
     has_email = bool(re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text))
     has_phone = bool(re.search(r'\b\d{10}\b|\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b|\+\d{1,3}[-.\s]?\d{10}\b', text))
     has_linkedin = bool(re.search(r'linkedin\.com', text))
     has_github = bool(re.search(r'github\.com', text))
-    
     contact_count = sum([has_email, has_phone, has_linkedin, has_github])
     
     if contact_count >= 3:
-        temp_strengths_list.append({
-            "strength": "Complete professional contact information",
-            "tip": f"Excellent! You have {contact_count} contact methods including email, phone, LinkedIn, and/or GitHub. This makes it easy for recruiters to reach you."
-        })
+        temp_strengths_list.append({"strength": "Complete contact info", "tip": f"Excellent! You have {contact_count} contact methods."})
     elif contact_count >= 2:
-        temp_strengths_list.append({
-            "strength": "Good contact information",
-            "tip": f"You have {contact_count} contact methods. Consider adding LinkedIn and GitHub profiles to strengthen your professional presence."
-        })
-    elif contact_count == 1:
-        resume_weaknesses.append({
-            "weakness": "Limited contact information",
-            "impact": "Having only one contact method limits how recruiters can reach you.",
-            "fix": "Add multiple contact methods: email, phone, LinkedIn URL, and GitHub profile for technical roles."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "No contact information found",
-            "impact": "CRITICAL ISSUE - Recruiters cannot contact you without visible email, phone, or professional profile links.",
-            "fix": "Add your contact information prominently at the top: Full Name, Email Address, Phone Number, LinkedIn URL, GitHub URL (for tech roles)."
-        })
+        temp_strengths_list.append({"strength": "Good contact info", "tip": f"You have {contact_count} contact methods."})
     
-    # ========================================================================
     # QUANTIFIABLE ACHIEVEMENTS (Bonus analysis)
-    # ========================================================================
     numbers_pattern = r'\b\d+%|\b\d+x|\b\d+\+|\b\d+ (percent|users|customers|million|thousand|projects|applications)\b'
-    has_metrics = bool(re.search(numbers_pattern, text, re.IGNORECASE))
+    if bool(re.search(numbers_pattern, text, re.IGNORECASE)):
+        temp_strengths_list.append({"strength": "Quantifiable achievements", "tip": "Great! You include metrics and numbers in your resume."})
+
+    total_score = formatting_score + skills_score + experience_score + keywords_score + education_score
     
-    if has_metrics:
-        temp_strengths_list.append({
-            "strength": "Quantifiable achievements present",
-            "tip": "Great! You include metrics and numbers in your resume, which strengthens your impact statements and is highly valued by ATS."
-        })
-    else:
-        resume_weaknesses.append({
-            "weakness": "No quantifiable achievements",
-            "impact": "Lack of metrics makes it harder to demonstrate impact. ATS and recruiters value measurable results.",
-            "fix": "Add specific numbers: 'Improved performance by 40%', 'Managed team of 5 developers', 'Processed 10K+ transactions daily', 'Reduced costs by $50K'."
-        })
-    
-    # ========================================================================
-    # COMPILE ENHANCED STRENGTHS SUMMARY
-    # ========================================================================
+    score_breakdown = {
+        "formatting": formatting_score,
+        "skills": skills_score,
+        "experience": experience_score,
+        "keywords": keywords_score,
+        "education": education_score
+    }
+
     enhanced_strengths = {
-        "summary": f"Your resume demonstrates {len(temp_strengths_list)} key strengths that contribute to your ATS score of {min(score, 100)}/100. These strengths show good alignment with ATS requirements.",
+        "summary": f"Your resume demonstrates {len(temp_strengths_list)} key strengths that contribute to your ATS score of {total_score}/100.",
         "individual_tips": [s["tip"] for s in temp_strengths_list],
         "strength_count": len(temp_strengths_list),
-        "score": min(score, 100)
+        "score": total_score
     }
     
-    return min(score, 100), enhanced_strengths, resume_weaknesses
+    return total_score, enhanced_strengths, resume_weaknesses, score_breakdown
 
 
 def skill_gap_analysis(skills_found: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -983,7 +834,7 @@ def analyze_resume(file_path: str) -> Dict[str, Any]:
         skills_found = extract_skills(resume_text)
         
         # Calculate comprehensive ATS score
-        ats_score, enhanced_strengths, resume_weaknesses = calculate_ats_score(
+        ats_score, enhanced_strengths, resume_weaknesses, score_breakdown = calculate_ats_score(
             resume_text, skills_found
         )
         
@@ -999,6 +850,7 @@ def analyze_resume(file_path: str) -> Dict[str, Any]:
         return {
             "success": True,
             "ats_score": ats_score,
+            "score_breakdown": score_breakdown,
             "skills_found": skills_found,
             "total_skills_found": sum(len(v) for v in skills_found.values()),
             "skill_gaps": skill_gaps,
