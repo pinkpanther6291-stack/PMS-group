@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -13,6 +13,8 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import auth from "@/lib/auth";
 import logo from "@/assets/banasthali-logo.jpg";
 
 const menuItems = [
@@ -21,6 +23,7 @@ const menuItems = [
   { icon: CalendarDays, label: "Drive Scheduling", path: "/dashboard/tpo/drives" },
   { icon: BarChart3, label: "Placement Analytics", path: "/dashboard/tpo/analytics" },
   { icon: FileBarChart, label: "Reports", path: "/dashboard/tpo/reports" },
+  { icon: FileBarChart, label: "Communications", path: "/dashboard/tpo/communications" },
 ];
 
 interface TPODashboardLayoutProps {
@@ -33,8 +36,53 @@ const TPODashboardLayout = ({ children, title }: TPODashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    navigate("/");
+  const [user, setUser] = useState<any>(() => auth.getUser()?.user);
+
+  const getProfileImageSrc = (u: any) => {
+    if (!u) return null;
+    if (u.profileData && u.profileFileName) {
+      const fn = u.profileFileName.toLowerCase();
+      const mime = fn.endsWith('.png') ? 'image/png' : fn.endsWith('.jpg') || fn.endsWith('.jpeg') ? 'image/jpeg' : 'image/*';
+      return `data:${mime};base64,${u.profileData}`;
+    }
+    return null;
+  };
+
+  const userInitial = (u: any) => {
+    if (!u) return 'T';
+    if (u.name && u.name.length) return u.name.charAt(0).toUpperCase();
+    if (u.email && u.email.length) return u.email.charAt(0).toUpperCase();
+    return 'T';
+  };
+
+  useEffect(() => {
+    const onUpdate = () => setUser(auth.getUser()?.user);
+    window.addEventListener('storage', onUpdate);
+    window.addEventListener('pms_auth_updated', onUpdate);
+    return () => {
+      window.removeEventListener('storage', onUpdate);
+      window.removeEventListener('pms_auth_updated', onUpdate);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const stored = auth.getUser();
+      const email = stored?.user?.email;
+      const role = stored?.role;
+      if (email && role) {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+        });
+      }
+    } catch (e) {
+      console.warn('Logout request failed:', e);
+    }
+    auth.clearUser();
+    try { window.dispatchEvent(new Event('pms_auth_updated')); } catch (e) {}
+    navigate('/');
   };
 
   return (
@@ -119,12 +167,16 @@ const TPODashboardLayout = ({ children, title }: TPODashboardLayoutProps) => {
               </span>
             </Button>
             <div className="flex items-center gap-2 pl-3 border-l border-border">
-              <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
-                T
-              </div>
+              <Avatar className="w-9 h-9">
+                {getProfileImageSrc(user) ? (
+                  <AvatarImage src={getProfileImageSrc(user) as string} alt={user?.name || 'Avatar'} />
+                ) : (
+                  <AvatarFallback>{userInitial(user)}</AvatarFallback>
+                )}
+              </Avatar>
               <div className="hidden md:block">
-                <p className="text-sm font-medium">TPO Officer</p>
-                <p className="text-xs text-muted-foreground">Placement Cell</p>
+                <p className="text-sm font-medium">{user?.name || 'TPO Officer'}</p>
+                <p className="text-xs text-muted-foreground">{user?.department || 'Placement Cell'}</p>
               </div>
             </div>
           </div>

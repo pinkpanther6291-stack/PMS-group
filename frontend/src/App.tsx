@@ -13,19 +13,23 @@ import Profile from "./pages/dashboard/Profile";
 import ResumeSkillAnalysis from "./pages/dashboard/ResumeSkillAnalysis";
 import PlacementCareer from "./pages/dashboard/PlacementCareer";
 import Notifications from "./pages/dashboard/Notifications";
+import StudentLearningResources from "./pages/dashboard/student/LearningResources";
 import FacultyDashboard from "./pages/dashboard/faculty/FacultyDashboard";
 import FacultyProfile from "./pages/dashboard/faculty/FacultyProfile";
 import StudentProgress from "./pages/dashboard/faculty/StudentProgress";
 import SkillAnalytics from "./pages/dashboard/faculty/SkillAnalytics";
 import LearningResources from "./pages/dashboard/faculty/LearningResources";
 import FacultyReports from "./pages/dashboard/faculty/FacultyReports";
+import StudentResumes from "./pages/dashboard/faculty/StudentResumes";
 import TPODashboard from "./pages/dashboard/tpo/TPODashboard";
 import TPOProfile from "./pages/dashboard/tpo/TPOProfile";
 import DriveScheduling from "./pages/dashboard/tpo/DriveScheduling";
 import PlacementAnalytics from "./pages/dashboard/tpo/PlacementAnalytics";
 import TPOReports from "./pages/dashboard/tpo/TPOReports";
+import TPOCommunications from "./pages/dashboard/tpo/TPOCommunications";
 import AdminDashboard from "./pages/dashboard/admin/AdminDashboard";
 import AdminProfile from "./pages/dashboard/admin/AdminProfile";
+import AdminCommunications from "./pages/dashboard/admin/AdminCommunications";
 import UserManagement from "./pages/dashboard/admin/UserManagement";
 import RolesManagement from "./pages/dashboard/admin/RolesManagement";
 import SystemLogs from "./pages/dashboard/admin/SystemLogs";
@@ -53,11 +57,13 @@ const App = () => (
           <Route path="/dashboard/student/resume-skills" element={<ResumeSkillAnalysis />} />
           <Route path="/dashboard/student/placement-career" element={<PlacementCareer />} />
           <Route path="/dashboard/student/notifications" element={<Notifications />} />
+          <Route path="/dashboard/student/learning-resources" element={<StudentLearningResources />} />
           
           {/* Faculty Dashboard Routes */}
           <Route path="/dashboard/faculty" element={<FacultyDashboard />} />
           <Route path="/dashboard/faculty/profile" element={<FacultyProfile />} />
           <Route path="/dashboard/faculty/student-progress" element={<StudentProgress />} />
+          <Route path="/dashboard/faculty/resumes" element={<StudentResumes />} />
           <Route path="/dashboard/faculty/skill-analytics" element={<SkillAnalytics />} />
           <Route path="/dashboard/faculty/learning-resources" element={<LearningResources />} />
           <Route path="/dashboard/faculty/reports" element={<FacultyReports />} />
@@ -67,12 +73,14 @@ const App = () => (
           <Route path="/dashboard/tpo/profile" element={<TPOProfile />} />
           <Route path="/dashboard/tpo/drives" element={<DriveScheduling />} />
           <Route path="/dashboard/tpo/analytics" element={<PlacementAnalytics />} />
+          <Route path="/dashboard/tpo/communications" element={<TPOCommunications />} />
           <Route path="/dashboard/tpo/reports" element={<TPOReports />} />
           
           {/* Admin Dashboard Routes */}
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/dashboard/admin" element={<AdminDashboard />} />
           <Route path="/admin/profile" element={<AdminProfile />} />
+              <Route path="/admin/communications" element={<AdminCommunications />} />
           <Route path="/admin/users" element={<UserManagement />} />
           <Route path="/admin/roles" element={<RolesManagement />} />
           <Route path="/admin/logs" element={<SystemLogs />} />

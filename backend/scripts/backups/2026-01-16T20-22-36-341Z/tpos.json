@@ -1,0 +1,25 @@
+[
+  {
+    "_id": "696a967b7207cc9000dd9d11",
+    "name": "Srashti Sharma",
+    "email": "srashtis@gmail.com",
+    "password": "Srashti.6291",
+    "cgpa": null,
+    "role": "tpo",
+    "ats_metrics": null,
+    "suggested_roles": [],
+    "extracted_skills": [],
+    "projects": [],
+    "notifications": [],
+    "feedback": [],
+    "createdAt": "2026-01-16T19:50:19.870Z",
+    "updatedAt": "2026-01-16T19:52:06.697Z",
+    "__v": 0,
+    "department": "Information Technology",
+    "designation": "CEO",
+    "employeeId": "BTBTC23111",
+    "phone": "8937988065",
+    "profileData": "",
+    "profileFileName": ""
+  }
+]

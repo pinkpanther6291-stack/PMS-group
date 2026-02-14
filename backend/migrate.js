@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 
 const MONGO = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const SOURCE = 'pmsdb';
-const TARGET = 'pms';
+const TARGET = 'pmsdb';
 const COLS = ['students','faculties','tpos','admins'];
 
 async function run(){

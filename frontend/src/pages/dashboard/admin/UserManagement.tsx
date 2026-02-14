@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AdminDashboardLayout from "@/components/AdminDashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import API_BASE from '@/lib/api';
 import { 
   Search, 
   Plus, 
@@ -50,10 +51,40 @@ import {
 const UserManagement = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [courseFilter, setCourseFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Clear demo users; will be fetched from backend when available
-  const users: any[] = [];
+  // Users fetched from backend
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/admin/users');
+        const data = await res.json();
+        if (res.ok && data && Array.isArray(data.users)) {
+          // normalize values
+          setUsers(data.users.map((u: any) => ({
+            ...u,
+            course: u.course || '',
+            role: (u.role || '').charAt(0).toUpperCase() + (u.role || '').slice(1),
+            status: (u.status || '').toLowerCase() === 'active' ? 'active' : 'inactive',
+            lastLogin: u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '—',
+          })));
+        } else {
+          setUsers([]);
+        }
+      } catch (e) {
+        console.error('Failed to load admin users', e);
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   const stats = [
     { label: "Total Users", value: "—", icon: Users, color: "text-blue-500" },
@@ -66,9 +97,47 @@ const UserManagement = () => {
     const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role.toLowerCase() === roleFilter;
+    const matchesCourse = courseFilter === 'all' || (user.course || '').toLowerCase() === courseFilter;
     const matchesStatus = statusFilter === "all" || user.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole && matchesStatus && matchesCourse;
   });
+
+  const courses = Array.from(new Set(users.map(u => (u.course || '').trim()).filter(Boolean)));
+
+  const deleteUser = async (email: string, role: string) => {
+    if (!confirm(`Delete user ${email} (${role})? This cannot be undone.`)) return;
+    try {
+      const url = (API_BASE || '') + '/api/admin/delete-user';
+      console.log('Deleting user via', url, { email, role });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, role: role.toLowerCase() }),
+      });
+
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        const txt = await res.text().catch(() => '');
+        console.warn('Non-JSON delete response', res.status, txt);
+        data = { message: txt || `HTTP ${res.status}` };
+      }
+
+      if (!res.ok) {
+        console.error('Delete failed', res.status, data);
+        alert(data && data.message ? data.message : `Delete failed: HTTP ${res.status}`);
+        return;
+      }
+
+      // remove from local state
+      setUsers(prev => prev.filter(u => u.email !== email));
+      alert('User deleted');
+    } catch (e) {
+      console.error('Delete user failed', e);
+      alert('Delete failed');
+    }
+  };
 
   return (
     <AdminDashboardLayout title="User Management">
@@ -117,6 +186,17 @@ const UserManagement = () => {
                     <SelectItem value="faculty">Faculty</SelectItem>
                     <SelectItem value="tpo">TPO</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={courseFilter} onValueChange={setCourseFilter}>
+                  <SelectTrigger className="w-full sm:w-32">
+                    <SelectValue placeholder="Course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Courses</SelectItem>
+                    {courses.map(c => (
+                      <SelectItem key={c} value={c.toLowerCase()}>{c}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -191,6 +271,7 @@ const UserManagement = () => {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Course</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Status</TableHead>
@@ -203,6 +284,13 @@ const UserManagement = () => {
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      {user.course ? (
+                        <Badge onClick={() => setCourseFilter(user.course.toLowerCase())} className="cursor-pointer">
+                          {user.course}
+                        </Badge>
+                      ) : ('—')}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={
                         user.role === "Admin" ? "destructive" :
@@ -226,7 +314,7 @@ const UserManagement = () => {
                             <MoreVertical className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end">
                           <DropdownMenuItem>
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
@@ -244,7 +332,7 @@ const UserManagement = () => {
                               </>
                             )}
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
+                          <DropdownMenuItem className="text-destructive" onClick={() => deleteUser(user.email, user.role)}>
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
                           </DropdownMenuItem>

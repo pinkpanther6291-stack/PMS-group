@@ -1,0 +1,54 @@
+{
+  "students": {
+    "beforeCount": 1,
+    "backedUp": 1,
+    "unset": {
+      "matched": 1,
+      "modified": 1
+    },
+    "afterCount": 1
+  },
+  "faculties": {
+    "beforeCount": 1,
+    "backedUp": 1,
+    "unset": {
+      "matched": 1,
+      "modified": 1
+    },
+    "unsetCgpa": {
+      "matched": 1,
+      "modified": 1
+    },
+    "afterCount": 1
+  },
+  "tpos": {
+    "beforeCount": 1,
+    "backedUp": 1,
+    "unset": {
+      "matched": 1,
+      "modified": 1
+    },
+    "unsetCgpa": {
+      "matched": 1,
+      "modified": 1
+    },
+    "afterCount": 1
+  },
+  "admins": {
+    "beforeCount": 1,
+    "backedUp": 1,
+    "unset": {
+      "matched": 1,
+      "modified": 1
+    },
+    "unsetCgpa": {
+      "matched": 1,
+      "modified": 1
+    },
+    "accessLevel": {
+      "matched": 1,
+      "modified": 1
+    },
+    "afterCount": 1
+  }
+}

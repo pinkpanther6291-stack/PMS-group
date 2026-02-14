@@ -1,0 +1,26 @@
+[
+  {
+    "_id": "696a92ba7207cc9000dd9cf4",
+    "name": "Preeti Singh",
+    "email": "preetii@gmail.com",
+    "password": "Preeti.6291",
+    "cgpa": null,
+    "role": "faculty",
+    "ats_metrics": null,
+    "suggested_roles": [],
+    "extracted_skills": [],
+    "projects": [],
+    "notifications": [],
+    "feedback": [],
+    "createdAt": "2026-01-16T19:34:18.471Z",
+    "updatedAt": "2026-01-16T20:02:09.325Z",
+    "__v": 0,
+    "department": "Computer Science",
+    "designation": "Professor",
+    "employeeId": "BTBTC23115",
+    "phone": "7078242635",
+    "profileData": "",
+    "profileFileName": "",
+    "specialization": "DBMS, DSA"
+  }
+]

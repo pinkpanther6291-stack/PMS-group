@@ -55,7 +55,22 @@ const careerPaths = [
   },
 ];
 
+import { useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+
 const PlacementCareer = () => {
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<string>(() => 'prediction');
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const tab = params.get('tab');
+      if (tab === 'prediction' || tab === 'career') setActiveTab(tab);
+    } catch (e) {
+      // ignore
+    }
+  }, [location.search]);
   const getStatusColor = (status: string) => {
     switch (status) {
       case "High":
@@ -82,7 +97,7 @@ const PlacementCareer = () => {
 
   return (
     <DashboardLayout title="Placement & Career">
-      <Tabs defaultValue="prediction" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="prediction" className="gap-2">
             <Target size={16} />

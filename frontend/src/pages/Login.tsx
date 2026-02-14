@@ -1,3 +1,4 @@
+import API_BASE from '@/lib/api';
 import { useState } from "react";
 import auth from "@/lib/auth";
 import { Link, useParams, useNavigate } from "react-router-dom";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { isEmailStrict } from '@/lib/validation';
 import logo from "@/assets/banasthali-logo.jpg";
 
 const roleLabels: Record<string, string> = {
@@ -29,12 +31,29 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    // strict client-side email validation
+    if (!isEmailStrict(email)) {
+      toast({ title: 'Invalid email', description: 'Enter a valid email (local part must include letters)', variant: 'destructive' });
+      setIsLoading(false);
+      return;
+    }
     try {
+      // Quick ping to detect unreachable backend and provide a clearer message
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 3000);
+      try {
+  await fetch(`${API_BASE}/api/ping`, { method: 'GET', signal: controller.signal });
+      } catch (pingErr: any) {
+        throw new Error(`Cannot reach backend API at ${API_BASE}. Start the backend and retry.`);
+      } finally {
+        clearTimeout(id);
+      }
+
       // Use role-agnostic login which returns { role, user }
-      const res = await fetch(`http://localhost:5000/api/login`, {
+      const res = await fetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, role }),
       });
 
       const data = await res.json();
@@ -56,7 +75,9 @@ const Login = () => {
         navigate(`/dashboard/${returnedRole}`);
       }
     } catch (err: any) {
-      toast({ title: "Login Error", description: err?.message || "Login failed", variant: "destructive" });
+      // If it's a network error, give a helpful message
+      const message = err?.message || "Login failed";
+      toast({ title: "Login Error", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +138,7 @@ const Login = () => {
             </div>
 
             <div className="text-right">
-              <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+              <Link to="/forgot-password" className="text-sm text-primary hover:underline font-semibold">
                 Forgot password?
               </Link>
             </div>

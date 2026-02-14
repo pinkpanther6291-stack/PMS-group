@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import API_BASE from '@/lib/api';
 import { useToast } from "@/hooks/use-toast";
 import logo from "@/assets/banasthali-logo.jpg";
+import { isEmailStrict } from '@/lib/validation';
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -30,6 +32,13 @@ const SignUp = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // client-side validations
+    const nameRegex = /^[A-Za-z\s]+$/;
+    if (!formData.name || !nameRegex.test(formData.name.trim())) {
+      toast({ title: 'Invalid name', description: 'Only alphabetic characters and spaces are allowed', variant: 'destructive' });
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       toast({
         title: "Error",
@@ -39,7 +48,23 @@ const SignUp = () => {
       return;
     }
 
+    const pwdRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-\[\]{};':"\\|,.<>\/?]).{8,}$/;
+    if (!pwdRegex.test(formData.password)) {
+      toast({ title: 'Weak password', description: 'Password must be at least 8 characters and include letters, numbers and special characters', variant: 'destructive' });
+      return;
+    }
+
     setIsLoading(true);
+
+    // strict client-side email validation
+    if (!isEmailStrict(formData.email)) {
+      toast({ title: 'Invalid email', description: 'Enter a valid email (local part must include letters)', variant: 'destructive' });
+      setIsLoading(false);
+      return;
+    }
+
+  // email domain: require a properly formatted email (example: user@domain.tld)
+  // isEmailStrict covers this check already; proceed
 
     // Call backend register endpoint
     const roleToPath = (role: string) => {
@@ -60,9 +85,16 @@ const SignUp = () => {
     const payload: any = { ...formData };
     delete payload.confirmPassword;
 
+    // Validate phone if provided (exactly 10 digits)
+    if (payload.phone && !/^\d{10}$/.test(String(payload.phone).trim())) {
+      toast({ title: 'Invalid phone', description: 'Phone number must be exactly 10 digits', variant: 'destructive' });
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(
-        `http://localhost:5000/api/${roleToPath(formData.role)}/register`,
+  `${API_BASE}/api/${roleToPath(formData.role)}/register`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

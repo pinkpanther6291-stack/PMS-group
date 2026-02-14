@@ -1,0 +1,23 @@
+[
+  {
+    "_id": "696a979c7207cc9000dd9d21",
+    "name": "Rocky",
+    "email": "rocky@gmail.com",
+    "password": "Rocky.6291",
+    "cgpa": null,
+    "role": "admin",
+    "ats_metrics": null,
+    "suggested_roles": [],
+    "extracted_skills": [],
+    "projects": [],
+    "notifications": [],
+    "feedback": [],
+    "createdAt": "2026-01-16T19:55:08.718Z",
+    "updatedAt": "2026-01-16T20:00:10.020Z",
+    "__v": 0,
+    "employeeId": "BTBTC23200",
+    "phone": "8937988032",
+    "profileData": "",
+    "profileFileName": ""
+  }
+]

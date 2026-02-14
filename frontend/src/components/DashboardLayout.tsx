@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -12,6 +12,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import auth from "@/lib/auth";
 import logo from "@/assets/banasthali-logo.jpg";
 
 const menuItems = [
@@ -19,7 +21,8 @@ const menuItems = [
   { icon: User, label: "My Profile", path: "/dashboard/student/profile" },
   { icon: FileText, label: "Resume & Skills", path: "/dashboard/student/resume-skills" },
   { icon: Target, label: "Placement & Career", path: "/dashboard/student/placement-career" },
-  { icon: Bell, label: "Notifications", path: "/dashboard/student/notifications" },
+    { icon: Bell, label: "Notifications", path: "/dashboard/student/notifications" },
+    { icon: FileText, label: "Lessons", path: "/dashboard/student/learning-resources" },
 ];
 
 interface DashboardLayoutProps {
@@ -32,8 +35,55 @@ const DashboardLayout = ({ children, title }: DashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    navigate("/");
+  // reactive stored user (listen for updates)
+  const [user, setUser] = useState<any>(() => auth.getUser()?.user);
+
+  const getProfileImageSrc = (u: any) => {
+    if (!u) return null;
+    if (u.profileData && u.profileFileName) {
+      const fn = u.profileFileName.toLowerCase();
+      const mime = fn.endsWith('.png') ? 'image/png' : fn.endsWith('.jpg') || fn.endsWith('.jpeg') ? 'image/jpeg' : 'image/*';
+      return `data:${mime};base64,${u.profileData}`;
+    }
+    return null;
+  };
+
+  const userInitial = (u: any) => {
+    if (!u) return 'S';
+    if (u.name && u.name.length) return u.name.charAt(0).toUpperCase();
+    if (u.email && u.email.length) return u.email.charAt(0).toUpperCase();
+    return 'S';
+  };
+
+  // update user on storage change or our custom event
+  useEffect(() => {
+    const onUpdate = () => setUser(auth.getUser()?.user);
+    window.addEventListener('storage', onUpdate);
+    window.addEventListener('pms_auth_updated', onUpdate);
+    return () => {
+      window.removeEventListener('storage', onUpdate);
+      window.removeEventListener('pms_auth_updated', onUpdate);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const stored = auth.getUser();
+      const email = stored?.user?.email;
+      const role = stored?.role;
+      if (email && role) {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+        });
+      }
+    } catch (e) {
+      console.warn('Logout request failed:', e);
+    }
+    auth.clearUser();
+    try { window.dispatchEvent(new Event('pms_auth_updated')); } catch (e) {}
+    navigate('/');
   };
 
   return (
@@ -118,12 +168,16 @@ const DashboardLayout = ({ children, title }: DashboardLayoutProps) => {
               </span>
             </Button>
             <div className="flex items-center gap-2 pl-3 border-l border-border">
-              <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold">
-                S
-              </div>
+              <Avatar className="w-9 h-9">
+                {getProfileImageSrc(user) ? (
+                  <AvatarImage src={getProfileImageSrc(user) as string} alt={user?.name || 'Avatar'} />
+                ) : (
+                  <AvatarFallback>{userInitial(user)}</AvatarFallback>
+                )}
+              </Avatar>
               <div className="hidden md:block">
-                <p className="text-sm font-medium">Student Name</p>
-                <p className="text-xs text-muted-foreground">B.Tech CSE</p>
+                <p className="text-sm font-medium">{user?.name || 'Student Name'}</p>
+                <p className="text-xs text-muted-foreground">{user?.course || 'B.Tech CSE'}</p>
               </div>
             </div>
           </div>

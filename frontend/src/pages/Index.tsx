@@ -1,7 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+// ...existing code... (removed DropdownMenu imports)
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import logo from "@/assets/banasthali-logo.jpg";
 import heroBg from "@/assets/hero-bg.jpg";
 import studentImg from "@/assets/student-role.jpg";
@@ -18,10 +19,9 @@ const Header = () => (
           AI-Powered Placement Management System
         </h1>
       </div>
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="lg" asChild>
-          <Link to="/login/student">Login</Link>
-        </Button>
+      <div className="flex items-center gap-3 relative">
+        {/* Login button with compact dropdown, now to the left of Sign Up */}
+        <LoginDropdown />
         <Button variant="default" size="lg" asChild>
           <Link to="/signup">Sign Up</Link>
         </Button>
@@ -29,6 +29,49 @@ const Header = () => (
     </div>
   </header>
 );
+
+function LoginDropdown() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!(e.target instanceof Node)) return;
+      if (!ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, []);
+
+  const onChoose = (role: string) => {
+    setOpen(false);
+    navigate(`/login/${role}`);
+  };
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="h-10 min-w-[120px] inline-flex items-center justify-center gap-2 rounded-md bg-white text-green-600 px-5 text-sm font-medium hover:bg-green-50 shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-green-300 focus:ring-offset-2"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        <span className="mx-auto">Login</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-40 bg-card rounded-lg shadow-lg border border-border z-50">
+          <button onClick={() => onChoose('student')} className="w-full text-left px-4 py-2 hover:bg-accent/5">Student</button>
+          <button onClick={() => onChoose('faculty')} className="w-full text-left px-4 py-2 hover:bg-accent/5">Faculty</button>
+          <button onClick={() => onChoose('tpo')} className="w-full text-left px-4 py-2 hover:bg-accent/5">TPO</button>
+          <button onClick={() => onChoose('admin')} className="w-full text-left px-4 py-2 hover:bg-accent/5">Admin</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const HeroSection = () => {
   const [email, setEmail] = useState("");

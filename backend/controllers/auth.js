@@ -1,5 +1,18 @@
 const bcrypt = require('bcryptjs');
 const sendEmail = require('../utils/sendEmail');
+const { validateName, validatePassword } = require('../utils/validation');
+
+// Strict email validator: local part must include at least one alphabetic character
+function isEmailStrict(email) {
+  if (!email || typeof email !== 'string') return false;
+  const parts = String(email).split('@');
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || !domain) return false;
+  if (!/[A-Za-z]/.test(local)) return false; // local must contain a letter
+  if (!/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(domain)) return false; // basic domain check
+  return true;
+}
 
 // Generic auth controller factory for a Mongoose Model
 function makeAuthController(Model, roleName, LoginModel) {
@@ -7,6 +20,19 @@ function makeAuthController(Model, roleName, LoginModel) {
     async register(req, res) {
       try {
         const data = { ...req.body, role: roleName };
+
+        if (!validateName(data.name)) {
+          return res.status(400).json({ message: 'Invalid name. Only alphabetic characters and spaces are allowed.' });
+        }
+
+        if (!validatePassword(data.password)) {
+          return res.status(400).json({ message: 'Password must be at least 8 characters and include letters, numbers and special characters.' });
+        }
+
+        // validate email format
+        if (!isEmailStrict(data.email)) {
+          return res.status(400).json({ message: 'Invalid email format' });
+        }
 
         // email uniqueness across collections is enforced by server.js caller
 
@@ -58,12 +84,30 @@ function makeAuthController(Model, roleName, LoginModel) {
         const { email, ...update } = req.body;
         if (!email) return res.status(400).json({ message: 'Email is required to identify the user' });
 
+        // validate identifier email format
+        if (!isEmailStrict(email)) {
+          return res.status(400).json({ message: 'Invalid email format' });
+        }
+
         // prevent changing role/accessLevel by client
         if (update.role) delete update.role;
         if (roleName === 'admin' && update.accessLevel) delete update.accessLevel;
 
-        // for password updates, load the doc and set then save to trigger pre-save
+        // validate name if present
+        if (update.name) {
+          const nameRegex = /^[A-Za-z\s]+$/;
+          if (!nameRegex.test(String(update.name).trim())) {
+            return res.status(400).json({ message: 'Invalid name. Only alphabetic characters and spaces are allowed.' });
+          }
+        }
+
+        // for password updates, validate strength then load the doc and set then save to trigger pre-save
         if (update.password) {
+          const pwdRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-\[\]{};':"\\|,.<>\/?]).{8,}$/;
+          if (!pwdRegex.test(String(update.password))) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters and include letters, numbers and special characters.' });
+          }
+
           const doc = await Model.findOne({ email });
           if (!doc) return res.status(404).json({ message: 'User not found' });
           doc.set(update);
@@ -132,6 +176,11 @@ function makeAuthController(Model, roleName, LoginModel) {
         const { password } = req.body;
         if (!token) return res.status(400).json({ message: 'Token is required' });
         if (!password) return res.status(400).json({ message: 'New password is required' });
+
+        const pwdRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-\[\]{};':"\\|,.<>\/?]).{8,}$/;
+        if (!pwdRegex.test(String(password))) {
+          return res.status(400).json({ message: 'Password must be at least 8 characters and include letters, numbers and special characters.' });
+        }
 
         const crypto = require('crypto');
         const hashed = crypto.createHash('sha256').update(token).digest('hex');

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
@@ -15,12 +15,15 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import auth from "@/lib/auth";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/admin/dashboard" },
   { icon: User, label: "My Profile", path: "/admin/profile" },
   { icon: Users, label: "Users", path: "/admin/users" },
   { icon: Shield, label: "Roles", path: "/admin/roles" },
+  { icon: FileText, label: "Communications", path: "/admin/communications" },
   { icon: FileText, label: "Logs", path: "/admin/logs" },
   { icon: Settings, label: "Settings", path: "/admin/settings" },
 ];
@@ -35,8 +38,53 @@ const AdminDashboardLayout = ({ children, title }: AdminDashboardLayoutProps) =>
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    navigate("/");
+  const [user, setUser] = useState<any>(() => auth.getUser()?.user);
+
+  const getProfileImageSrc = (u: any) => {
+    if (!u) return null;
+    if (u.profileData && u.profileFileName) {
+      const fn = u.profileFileName.toLowerCase();
+      const mime = fn.endsWith('.png') ? 'image/png' : fn.endsWith('.jpg') || fn.endsWith('.jpeg') ? 'image/jpeg' : 'image/*';
+      return `data:${mime};base64,${u.profileData}`;
+    }
+    return null;
+  };
+
+  const userInitial = (u: any) => {
+    if (!u) return 'A';
+    if (u.name && u.name.length) return u.name.charAt(0).toUpperCase();
+    if (u.email && u.email.length) return u.email.charAt(0).toUpperCase();
+    return 'A';
+  };
+
+  useEffect(() => {
+    const onUpdate = () => setUser(auth.getUser()?.user);
+    window.addEventListener('storage', onUpdate);
+    window.addEventListener('pms_auth_updated', onUpdate);
+    return () => {
+      window.removeEventListener('storage', onUpdate);
+      window.removeEventListener('pms_auth_updated', onUpdate);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const stored = auth.getUser();
+      const email = stored?.user?.email;
+      const role = stored?.role;
+      if (email && role) {
+        await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, role }),
+        });
+      }
+    } catch (e) {
+      console.warn('Logout request failed:', e);
+    }
+    auth.clearUser();
+    try { window.dispatchEvent(new Event('pms_auth_updated')); } catch (e) {}
+    navigate('/');
   };
 
   return (
@@ -134,10 +182,14 @@ const AdminDashboardLayout = ({ children, title }: AdminDashboardLayoutProps) =>
               </span>
             </Button>
             <div className="flex items-center gap-2 cursor-pointer">
-              <div className="w-8 h-8 bg-destructive/20 rounded-full flex items-center justify-center">
-                <span className="text-destructive font-medium text-sm">A</span>
-              </div>
-              <span className="text-sm font-medium text-foreground hidden sm:block">Admin</span>
+              <Avatar className="w-8 h-8">
+                {getProfileImageSrc(user) ? (
+                  <AvatarImage src={getProfileImageSrc(user) as string} alt={user?.name || 'Avatar'} />
+                ) : (
+                  <AvatarFallback>{userInitial(user)}</AvatarFallback>
+                )}
+              </Avatar>
+              <span className="text-sm font-medium text-foreground hidden sm:block">{user?.name || 'Admin'}</span>
               <ChevronDown className="w-4 h-4 text-muted-foreground" />
             </div>
           </div>
