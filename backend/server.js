@@ -4,6 +4,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const busboy = require('busboy');
 const path = require('path');
+const { spawn } = require('child_process');
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 
 // Debug: log .env raw content so we can see why dotenv may not be injecting values
@@ -228,41 +229,117 @@ function isEmailStrict(email) {
 }
 
 // --- ATS Scoring Endpoint ---
-// Gemini/Generative-AI integration removed; use local fallback scorer instead.
+// Uses Python-based ats_resume_analyzer for comprehensive analysis
 
-// Helper to safely parse JSON that may be wrapped in markdown or code fences
-function safeParseJson(maybeJson) {
-  if (!maybeJson || typeof maybeJson !== 'string') return null;
-  // strip markdown code fences
-  const cleaned = maybeJson.replace(/```json\n?|```/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    // attempt to extract the first {...} block
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (m) {
-      try { return JSON.parse(m[0]); } catch (e2) { return null; }
-    }
-    return null;
-  }
+// Helper to run the Python resume analyzer on a given file path
+function runPythonAnalyzer(filePath) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, 'analyze_resume_wrapper.py');
+    console.log(`[PythonAnalyzer] Running: python "${scriptPath}" "${filePath}"`);
+
+    const proc = spawn('python', [scriptPath, filePath], {
+      cwd: __dirname,
+      env: { ...process.env },
+      timeout: 60000, // 60 second timeout
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      console.log(`[PythonAnalyzer] Process exited with code ${code}`);
+      if (stderr) console.log(`[PythonAnalyzer] stderr: ${stderr}`);
+
+      if (code !== 0 && !stdout.trim()) {
+        return reject(new Error(`Python analyzer failed with code ${code}: ${stderr}`));
+      }
+
+      try {
+        const result = JSON.parse(stdout.trim());
+        resolve(result);
+      } catch (parseErr) {
+        console.error('[PythonAnalyzer] Failed to parse JSON output:', stdout.substring(0, 500));
+        reject(new Error('Failed to parse Python analyzer output'));
+      }
+    });
+
+    proc.on('error', (err) => {
+      console.error('[PythonAnalyzer] Process error:', err.message);
+      reject(new Error(`Failed to start Python analyzer: ${err.message}`));
+    });
+  });
 }
 
-// ATS scoring removed: return 410 for any scoring attempts
-app.post('/api/score-resume/:id', async (req, res) => {
-  console.log('[ScoreResume] Request received but scoring has been removed.');
-  return res.status(410).json({ message: 'ATS scoring has been removed from this application.' });
+// Analyze resume endpoint: analyzes the resume for a student by email
+app.post('/api/analyze-resume', async (req, res) => {
+  try {
+    const email = req.body.email || req.headers['x-student-email'] || req.headers['x-user-email'];
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    console.log(`[AnalyzeResume] Request for email=${email}`);
+
+    // Find the student
+    const student = await Student.findOne({ email }).lean();
+    if (!student) return res.status(404).json({ message: 'Student not found' });
+
+    // We need a PDF file to analyze. Check disk first, then fall back to base64
+    let filePathToAnalyze = null;
+
+    // Check if resume file exists on disk
+    if (student.resumePath) {
+      const diskPath = path.join(__dirname, student.resumePath);
+      if (fs.existsSync(diskPath)) {
+        filePathToAnalyze = diskPath;
+      }
+    }
+
+    // Fallback: write base64 data to a temp file
+    if (!filePathToAnalyze && student.resumeData) {
+      const uploadsDir = path.join(__dirname, 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      const tmpName = `temp_analyze_${Date.now()}.pdf`;
+      const tmpPath = path.join(uploadsDir, tmpName);
+      fs.writeFileSync(tmpPath, Buffer.from(student.resumeData, 'base64'));
+      filePathToAnalyze = tmpPath;
+    }
+
+    if (!filePathToAnalyze) {
+      return res.status(404).json({ message: 'No resume found for this student. Please upload a resume first.' });
+    }
+
+    console.log(`[AnalyzeResume] Analyzing file: ${filePathToAnalyze}`);
+
+    // Run Python analyzer
+    const result = await runPythonAnalyzer(filePathToAnalyze);
+
+    if (!result.success) {
+      return res.status(500).json({
+        message: result.message || 'Analysis failed',
+        error: result.error,
+      });
+    }
+
+    console.log(`[AnalyzeResume] Analysis complete. ATS Score: ${result.ats_score}/100`);
+
+    return res.json(result);
+  } catch (err) {
+    console.error('[AnalyzeResume] Error:', err.message);
+    return res.status(500).json({ message: 'Resume analysis failed', error: err.message });
+  }
 });
 
-// Gemini endpoints removed — scoring now runs locally on the server without external APIs.
-
-// Temporary: import a .scored.json file from uploads and apply it to the student matching resumeFileName
-// Use: POST /api/import-scored/:resumeName  (resumeName should match student.resumeFileName, e.g. Resume_harshita.pdf)
-// Import-scored dev endpoint disabled to prevent any local scoring or manual ATS imports.
-// Previously this endpoint applied .scored.json files to student records; it is now intentionally disabled.
-console.log('IMPORT ENDPOINT DISABLED (dev-only)');
-app.post('/api/import-scored/:resumeName', async (req, res) => {
-  console.log('[ImportScored] Attempt to import scored file blocked');
-  return res.status(410).json({ message: 'Import-scored endpoint disabled. Local scoring/import is not supported.' });
+// Legacy score-resume endpoint: redirects to new analyzer
+app.post('/api/score-resume/:id', async (req, res) => {
+  console.log('[ScoreResume] Redirecting to new analyze-resume endpoint.');
+  return res.status(410).json({ message: 'Use POST /api/analyze-resume with email instead.' });
 });
 
 // Helper to create routes for a given model and path

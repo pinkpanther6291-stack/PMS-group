@@ -1,0 +1,15 @@
+﻿901:             </CardContent>
+902:           </Card>
+903:         </TabsContent>
+904:       </Tabs>
+905:     </>
+906:   )
+907: }
+908:       </div >
+909:     </DashboardLayout >
+910:   );
+911: };
+912: 
+913: 
+914: 
+915: export default ResumeSkillAnalysis;
